@@ -48,5 +48,6 @@ export interface RAGSearchResult {
   keyword: string;
   relevant_chunks: string[];
   source_page?: number;
+  source?: 'chromadb' | 'mock' | 'not_found';
 }
 

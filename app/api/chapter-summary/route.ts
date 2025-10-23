@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     // If RAG links are requested, fetch definitions for keywords
     if (include_rag_links) {
       console.log('Fetching RAG definitions for keywords:', parsedResponse.core_keywords);
-      const ragResults = batchRAGSearch(parsedResponse.core_keywords);
+      const ragResults = await batchRAGSearch(parsedResponse.core_keywords);
       response.rag_definitions = ragResults;
     }
 

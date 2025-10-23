@@ -28,12 +28,13 @@ This demo showcases three core features in priority order:
 - **Student-Focused**: Written as study guides for exam preparation
 - **Keyword Identification**: Automatic extraction of 5-10 core technical terms
 
-### 3. RAG-Powered Keyword Linking
+### 3. RAG-Powered Keyword Linking (ChromaDB)
 
 - **Interactive Keywords**: Clickable terms highlighted throughout summaries
+- **Semantic Search**: ChromaDB vector database for intelligent content retrieval
 - **Source Material Access**: Click to view original textbook definitions
-- **Vector Database Integration**: Mock implementation demonstrating production architecture
-- **Cost-Effective Design**: Pre-loading option reduces API calls
+- **Automatic Fallback**: Falls back to mock data if ChromaDB unavailable
+- **Production Ready**: Real vector database with persistent storage
 
 ## 📋 Prerequisites
 
@@ -63,7 +64,19 @@ Edit `.env.local` and add your OpenAI API key:
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-### 3. Run Development Server
+### 3. (Optional) Start ChromaDB for RAG
+
+```bash
+# Using docker-compose (recommended)
+docker-compose up -d
+
+# Populate with educational content
+npm run populate-chroma
+```
+
+**Note**: The app works without ChromaDB (uses mock data as fallback). See `CHROMADB_SETUP.md` for full instructions.
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
@@ -71,12 +84,20 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 4. Build for Production
+### 5. Build for Production
 
 ```bash
 npm run build
 npm start
 ```
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run populate-chroma` - Populate ChromaDB with educational content
+- `npm run chroma:docker` - Start ChromaDB using Docker
 
 ## 📚 API Documentation
 

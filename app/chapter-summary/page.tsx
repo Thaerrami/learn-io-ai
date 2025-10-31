@@ -1,34 +1,49 @@
 'use client';
 
-import React, { useState } from 'react';
-import ChapterSummaryDisplay from '@/components/ChapterSummaryDisplay';
-import Link from 'next/link';
+import { useState } from 'react';
 
-export default function ChapterSummaryPage() {
-  const [chapterName, setChapterName] = useState('Financial Statement Analysis');
-  const [includeRAGLinks, setIncludeRAGLinks] = useState(true);
-  const [currentSummary, setCurrentSummary] = useState<any | null>(null);
+interface Source {
+  source: string;
+  page?: number;
+  excerpt: string;
+}
+
+interface ChapterSummary {
+  chapter_name: string;
+  summary_text: string;
+  core_keywords: string[];
+  sources: Source[];
+  generated_at: string;
+  model_used: string;
+}
+
+export default function ChapterSummaryDemo() {
+  const [chapterName, setChapterName] = useState('Chapter 1: Introduction to Management Accounting');
+  const [keywords, setKeywords] = useState('cost behavior, fixed costs, variable costs, mixed costs');
+  const [summary, setSummary] = useState<ChapterSummary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [availableChapters, setAvailableChapters] = useState<any[]>([]);
+  const [error, setError] = useState('');
+  const [chromaStatus, setChromaStatus] = useState<any>(null);
 
-  // Fetch available chapters on mount
-  React.useEffect(() => {
-    fetch('/api/chapter-summary')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.available_chapters) {
-          setAvailableChapters(data.available_chapters);
-        }
-      })
-      .catch((err) => console.error('Error fetching chapters:', err));
-  }, []);
+  // Check ChromaDB status on mount
+  useState(() => {
+    fetch('/api/ingest-pdf')
+      .then(res => res.json())
+      .then(data => setChromaStatus(data))
+      .catch(err => console.error('Failed to check ChromaDB status:', err));
+  });
 
-  const generateSummary = async () => {
+  const handleGenerateSummary = async () => {
     setLoading(true);
-    setError(null);
+    setError('');
+    setSummary(null);
 
     try {
+      const keywordsArray = keywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k.length > 0);
+
       const response = await fetch('/api/chapter-summary', {
         method: 'POST',
         headers: {
@@ -36,7 +51,7 @@ export default function ChapterSummaryPage() {
         },
         body: JSON.stringify({
           chapter_name: chapterName,
-          include_rag_links: includeRAGLinks,
+          core_keywords: keywordsArray,
         }),
       });
 
@@ -46,250 +61,203 @@ export default function ChapterSummaryPage() {
       }
 
       const data = await response.json();
-      setCurrentSummary(data);
+      setSummary(data);
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error generating summary:', err);
+      setError(err.message || 'An error occurred while generating the summary');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 py-8 px-4">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <Link
-            href="/"
-            className="text-purple-600 hover:text-purple-800 mb-4 inline-block"
-          >
-            ← Back to Home
-          </Link>
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            Chapter Summary Generator
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            📚 Chapter Summary Generator
           </h1>
-          <p className="text-gray-600">
-            Generate comprehensive chapter abstractions with linked keywords and RAG-powered definitions
+          <p className="text-lg text-gray-600">
+            Generate comprehensive summaries using RAG with ChromaDB
           </p>
+          
+          {/* ChromaDB Status */}
+          {chromaStatus && (
+            <div className={`mt-4 inline-flex items-center px-4 py-2 rounded-full text-sm ${
+              chromaStatus.status === 'connected' 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              <span className="mr-2">
+                {chromaStatus.status === 'connected' ? '✅' : '❌'}
+              </span>
+              {chromaStatus.status === 'connected' 
+                ? `ChromaDB Connected (${chromaStatus.document_count} documents)` 
+                : 'ChromaDB Disconnected'}
+            </div>
+          )}
         </div>
 
-        {/* Configuration Panel */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Summary Parameters
-          </h2>
-
-          <div className="space-y-6 mb-6">
-            {/* Chapter Selection */}
+        {/* Input Form */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Select Chapter
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Chapter Name
               </label>
-              <select
+              <input
+                type="text"
                 value={chapterName}
                 onChange={(e) => setChapterName(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
-              >
-                {availableChapters.length > 0 ? (
-                  availableChapters.map((chapter) => (
-                    <option key={chapter.chapter_id} value={chapter.chapter_name}>
-                      {chapter.chapter_name}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="Financial Statement Analysis">
-                      Financial Statement Analysis
-                    </option>
-                    <option value="Cost Accounting Fundamentals">
-                      Cost Accounting Fundamentals
-                    </option>
-                    <option value="Budgeting and Forecasting">
-                      Budgeting and Forecasting
-                    </option>
-                  </>
-                )}
-              </select>
-            </div>
-
-            {/* RAG Links Toggle */}
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="rag-toggle"
-                checked={includeRAGLinks}
-                onChange={(e) => setIncludeRAGLinks(e.target.checked)}
-                className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., Chapter 1: Introduction to Management Accounting"
               />
-              <label htmlFor="rag-toggle" className="ml-3 text-sm font-semibold text-gray-700">
-                Include RAG-powered keyword definitions
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Core Keywords (comma-separated)
               </label>
+              <input
+                type="text"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., cost behavior, fixed costs, variable costs"
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Enter keywords to focus the summary on specific topics
+              </p>
             </div>
-            <p className="text-xs text-gray-500 ml-8">
-              When enabled, keyword definitions are pre-loaded from the vector database (simulated with mock data)
-            </p>
-          </div>
 
-          {/* Generate Button */}
-          <button
-            onClick={generateSummary}
-            disabled={loading}
-            className={`w-full py-3 px-6 rounded-lg font-semibold text-white transition-colors ${
-              loading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-purple-600 hover:bg-purple-700'
-            }`}
-          >
-            {loading ? 'Generating Summary...' : 'Generate Chapter Summary'}
-          </button>
+            <button
+              onClick={handleGenerateSummary}
+              disabled={loading || !chapterName || !keywords}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating Summary...
+                </span>
+              ) : (
+                '✨ Generate Summary'
+              )}
+            </button>
+          </div>
         </div>
-
-        {/* Feature Highlights */}
-        {!currentSummary && !loading && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">
-              ✨ Key Features Demonstrated
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-900 mb-2">
-                  📖 Comprehensive Abstraction
-                </h4>
-                <p className="text-sm text-gray-700">
-                  Summaries are designed as review tools, focusing on key concepts,
-                  formulas, and rules for effective studying.
-                </p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">
-                  🔗 Keyword Linking
-                </h4>
-                <p className="text-sm text-gray-700">
-                  Core keywords are automatically identified and linked to original
-                  source material via RAG search.
-                </p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg">
-                <h4 className="font-semibold text-green-900 mb-2">
-                  💡 Interactive Learning
-                </h4>
-                <p className="text-sm text-gray-700">
-                  Click any keyword to see its definition from the original course
-                  materials, enhancing understanding.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Error Display */}
         {error && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-8">
-            <h3 className="font-bold text-red-800 mb-2">Error</h3>
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Generating comprehensive chapter summary...</p>
-            <p className="text-sm text-gray-500 mt-2">This may take 10-15 seconds</p>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">⚠️</span>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Summary Display */}
-        {currentSummary && !loading && (
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-            <div className="mb-6">
-              <h2 className="text-3xl font-bold text-gray-800 mb-2">
-                {currentSummary.chapter_name}
+        {summary && (
+          <div className="space-y-6">
+            {/* Summary Text */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                {summary.chapter_name}
               </h2>
-              <p className="text-sm text-gray-500">
-                Generated at: {new Date(currentSummary.generated_at).toLocaleString()}
+              <div className="prose max-w-none text-gray-700 whitespace-pre-line">
+                {summary.summary_text}
+              </div>
+              
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <span>Generated with {summary.model_used}</span>
+                  <span>{new Date(summary.generated_at).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Keywords */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                📌 Core Keywords
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {summary.core_keywords.map((keyword, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                  >
+                    {keyword}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Sources */}
+            {summary.sources && summary.sources.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  📖 Sources
+                </h3>
+                <div className="space-y-3">
+                  {summary.sources.map((source, index) => (
+                    <div
+                      key={index}
+                      className="border-l-4 border-blue-500 bg-blue-50 p-3 rounded"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-blue-900">
+                          {source.source}
+                        </span>
+                        {source.page && (
+                          <span className="text-sm text-blue-700">
+                            Page {source.page}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 italic">
+                        {source.excerpt}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Instructions */}
+        {!summary && !loading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+            <h3 className="text-lg font-semibold text-blue-900 mb-2">
+              🚀 Getting Started
+            </h3>
+            <p className="text-blue-800 mb-4">
+              Make sure ChromaDB is running and PDFs are ingested before generating summaries.
+            </p>
+            <div className="text-left bg-white p-4 rounded border border-blue-200 space-y-2">
+              <p className="text-sm font-mono text-gray-800">
+                1. Start ChromaDB: <code className="bg-gray-100 px-2 py-1 rounded">docker run -p 8000:8000 chromadb/chroma</code>
+              </p>
+              <p className="text-sm font-mono text-gray-800">
+                2. Ingest PDFs: <code className="bg-gray-100 px-2 py-1 rounded">npx ts-node scripts/ingestPDFs.ts</code>
+              </p>
+              <p className="text-sm font-mono text-gray-800">
+                3. Generate summaries with the form above!
               </p>
             </div>
-
-            <ChapterSummaryDisplay
-              summary_text={currentSummary.summary_text}
-              core_keywords={currentSummary.core_keywords}
-              rag_definitions={currentSummary.rag_definitions}
-            />
           </div>
         )}
-
-        {/* RAG Implementation Flow */}
-        {currentSummary && !loading && (
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg p-6 mb-8">
-            <h3 className="text-xl font-bold mb-4">🔄 RAG Implementation Flow</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start">
-                <span className="font-bold mr-2">1.</span>
-                <span>
-                  <strong>Chapter Summary Generation:</strong> OpenAI generates comprehensive
-                  summary and identifies core keywords
-                </span>
-              </div>
-              <div className="flex items-start">
-                <span className="font-bold mr-2">2.</span>
-                <span>
-                  <strong>Keyword Extraction:</strong> {currentSummary.core_keywords.length}{' '}
-                  core keywords identified: {currentSummary.core_keywords.join(', ')}
-                </span>
-              </div>
-              <div className="flex items-start">
-                <span className="font-bold mr-2">3.</span>
-                <span>
-                  <strong>RAG Search:</strong> Each keyword is passed to{' '}
-                  <code className="bg-white bg-opacity-20 px-2 py-1 rounded">
-                    RAG_Search_Function(keyword)
-                  </code>{' '}
-                  which queries the vector database
-                </span>
-              </div>
-              <div className="flex items-start">
-                <span className="font-bold mr-2">4.</span>
-                <span>
-                  <strong>Frontend Linking:</strong> Keywords are highlighted and clickable,
-                  displaying source material on interaction
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Implementation Notes */}
-        <div className="bg-gray-800 text-white rounded-lg p-6">
-          <h3 className="text-xl font-bold mb-4">🔧 Implementation Notes</h3>
-          <ul className="space-y-2 text-sm">
-            <li>
-              <strong>API Endpoint:</strong> <code>/api/chapter-summary</code>
-            </li>
-            <li>
-              <strong>Model:</strong> GPT-3.5-Turbo (can be upgraded to GPT-4 for higher quality)
-            </li>
-            <li>
-              <strong>RAG Service:</strong> Mock implementation using keyword matching; production
-              would use vector embeddings
-            </li>
-            <li>
-              <strong>Vector Database:</strong> Mock data simulates Pinecone/Weaviate; stores PDF
-              chunks with embeddings
-            </li>
-            <li>
-              <strong>Cost Optimization:</strong> Pre-loading RAG definitions reduces frontend API
-              calls
-            </li>
-            <li>
-              <strong>Keyword Highlighting:</strong> Client-side string processing with collision
-              handling
-            </li>
-          </ul>
-        </div>
       </div>
     </div>
   );
 }
-

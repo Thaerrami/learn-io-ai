@@ -1,116 +1,158 @@
-import { mockPDFChunks } from './mockData';
+/**
+ * RAG Service using ChromaDB
+ * Provides semantic search with source attribution
+ */
+
+import { semanticSearch, searchKeywordDefinition, batchKeywordSearch, initChromaDB } from './chromaService';
 import { RAGSearchResult } from './types';
-import { searchKeywordDefinition, healthCheck } from './chromaService';
 
 /**
- * RAG Search Function with ChromaDB
- * Uses vector database for semantic search with fallback to mock data
+ * Initialize RAG system
  */
-export async function RAG_Search_Function(keyword: string): Promise<RAGSearchResult> {
+export async function initRAG() {
   try {
-    // Try ChromaDB first if available
-    const isChromaHealthy = await healthCheck();
-    
-    if (isChromaHealthy) {
-      console.log(`🔍 Searching ChromaDB for: ${keyword}`);
-      const result = await searchKeywordDefinition(keyword);
-      
-      return {
-        keyword,
-        relevant_chunks: result.relevant_chunks,
-        source_page: result.source_page,
-        source: 'chromadb',
-      };
-    }
+    await initChromaDB();
+    return true;
   } catch (error) {
-    console.log(`⚠️ ChromaDB unavailable, falling back to mock data for: ${keyword}`);
+    console.error('Failed to initialize RAG:', error);
+    return false;
   }
-
-  // Fallback to mock data
-  return RAG_Search_Function_Mock(keyword);
 }
 
 /**
- * Mock RAG Search Function (Fallback)
- * Uses simple keyword matching against mock PDF chunks
+ * Search for relevant content using semantic search
  */
-function RAG_Search_Function_Mock(keyword: string): RAGSearchResult {
-  const normalizedKeyword = keyword.toLowerCase().trim();
-  
-  // Try exact match first
-  if (mockPDFChunks[normalizedKeyword]) {
+export async function searchContent(
+  query: string,
+  nResults: number = 3
+): Promise<Array<{
+  text: string;
+  source: string;
+  page?: number;
+  score: number;
+}>> {
+  try {
+    const results = await semanticSearch(query, nResults);
+    
+    if (!results.documents[0] || results.documents[0].length === 0) {
+      return [];
+    }
+
+    return results.documents[0].map((doc, idx) => ({
+      text: doc,
+      source: results.metadatas[0]?.[idx]?.source || 'Unknown',
+      page: results.metadatas[0]?.[idx]?.page,
+      score: results.distances[0]?.[idx] || 0,
+    }));
+  } catch (error) {
+    console.error('Search content failed:', error);
+    return [];
+  }
+}
+
+/**
+ * RAG Search Function for keywords
+ */
+export async function RAG_Search_Function(keyword: string): Promise<RAGSearchResult> {
+  try {
+    const result = await searchKeywordDefinition(keyword);
+    return {
+      keyword: result.keyword,
+      relevant_chunks: result.relevant_chunks,
+      source_page: result.source_page,
+      metadatas: result.metadatas,
+    };
+  } catch (error) {
+    console.error(`RAG search failed for keyword "${keyword}":`, error);
     return {
       keyword,
-      relevant_chunks: mockPDFChunks[normalizedKeyword],
-      source_page: Math.floor(Math.random() * 50) + 1,
-      source: 'mock',
+      relevant_chunks: [`Error retrieving information for "${keyword}".`],
+      source_page: undefined,
     };
   }
-
-  // Try partial matching
-  const matchingKey = Object.keys(mockPDFChunks).find((key) =>
-    key.includes(normalizedKeyword) || normalizedKeyword.includes(key)
-  );
-
-  if (matchingKey) {
-    return {
-      keyword,
-      relevant_chunks: mockPDFChunks[matchingKey],
-      source_page: Math.floor(Math.random() * 50) + 1,
-      source: 'mock',
-    };
-  }
-
-  // If no match found, return a generic response
-  return {
-    keyword,
-    relevant_chunks: [
-      `Definition for "${keyword}" is not available in the current knowledge base. This term may require additional reference materials or expert consultation.`,
-    ],
-    source_page: undefined,
-    source: 'not_found',
-  };
 }
 
 /**
  * Batch RAG search for multiple keywords
  */
 export async function batchRAGSearch(keywords: string[]): Promise<Record<string, RAGSearchResult>> {
-  const results: Record<string, RAGSearchResult> = {};
-  
-  // Search in parallel for better performance
-  const searches = keywords.map(async (keyword) => {
-    const result = await RAG_Search_Function(keyword);
-    results[keyword] = result;
-  });
-  
-  await Promise.all(searches);
-  
-  return results;
+  try {
+    return await batchKeywordSearch(keywords);
+  } catch (error) {
+    console.error('Batch RAG search failed:', error);
+    const fallback: Record<string, RAGSearchResult> = {};
+    for (const keyword of keywords) {
+      fallback[keyword] = {
+        keyword,
+        relevant_chunks: [`Error retrieving information for "${keyword}".`],
+        source_page: undefined,
+      };
+    }
+    return fallback;
+  }
 }
 
 /**
- * Simulate vector database semantic search
- * In production, this would use embeddings and similarity search
+ * Get context for chapter summary generation
  */
-export async function semanticSearch(query: string, topK: number = 3): Promise<string[]> {
-  // For demo purposes, we'll do a simple keyword-based search
-  const allChunks = Object.values(mockPDFChunks).flat();
-  const queryWords = query.toLowerCase().split(' ');
-  
-  // Score each chunk based on keyword overlap
-  const scoredChunks = allChunks.map((chunk) => {
-    const chunkLower = chunk.toLowerCase();
-    const score = queryWords.reduce((acc, word) => {
-      return acc + (chunkLower.includes(word) ? 1 : 0);
-    }, 0);
-    return { chunk, score };
-  });
-
-  // Sort by score and return top K
-  return scoredChunks
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map((item) => item.chunk);
+export async function getChapterContext(
+  chapterName: string,
+  keywords: string[]
+): Promise<Array<{
+  text: string;
+  source: string;
+  page?: number;
+}>> {
+  try {
+    // Search for chapter content
+    const chapterQuery = `${chapterName} overview introduction main topics`;
+    const chapterResults = await searchContent(chapterQuery, 5);
+    
+    // Search for specific keywords
+    const keywordResults = await Promise.all(
+      keywords.map(keyword => searchContent(keyword, 2))
+    );
+    
+    // Combine and deduplicate
+    const allResults = [...chapterResults, ...keywordResults.flat()];
+    const uniqueResults = allResults.filter(
+      (result, index, self) =>
+        index === self.findIndex(r => r.text === result.text)
+    );
+    
+    return uniqueResults.slice(0, 10); // Return top 10 most relevant
+  } catch (error) {
+    console.error('Failed to get chapter context:', error);
+    return [];
+  }
 }
 
+/**
+ * Get example questions from testbank
+ */
+export async function getTestbankExamples(
+  topic: string,
+  count: number = 3
+): Promise<Array<{
+  text: string;
+  source: string;
+}>> {
+  try {
+    const results = await semanticSearch(`${topic} question`, count);
+    
+    if (!results.documents[0] || results.documents[0].length === 0) {
+      return [];
+    }
+
+    return results.documents[0]
+      .map((doc, idx) => ({
+        text: doc,
+        source: results.metadatas[0]?.[idx]?.source || 'Testbank',
+        type: results.metadatas[0]?.[idx]?.type,
+      }))
+      .filter(result => result.type === 'testbank_question');
+  } catch (error) {
+    console.error('Failed to get testbank examples:', error);
+    return [];
+  }
+}

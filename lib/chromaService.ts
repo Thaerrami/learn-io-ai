@@ -4,40 +4,58 @@
  * This service provides vector-based semantic search for educational content.
  * It stores PDF chunks, definitions, and course materials in a vector database
  * for efficient retrieval.
+ * 
+ * NOTE: This module should only be imported in server-side code (API routes)
  */
 
-import { ChromaClient, Collection } from 'chromadb';
+import type { ChromaClient, Collection } from 'chromadb';
 
 // Initialize ChromaDB client
-let client: ChromaClient;
-let collection: Collection;
+let client: ChromaClient | null = null;
+let collection: Collection | null = null;
 
 const COLLECTION_NAME = 'educational_content';
+
+/**
+ * Lazy load ChromaDB client (only on server side)
+ */
+async function getChromaClient(): Promise<ChromaClient> {
+  if (client) return client;
+  
+  const { ChromaClient } = await import('chromadb');
+  
+  // Use the modern ChromaDB client configuration
+  const chromaHost = process.env.CHROMA_HOST || 'localhost';
+  const chromaPort = parseInt(process.env.CHROMA_PORT || '8000');
+  
+  client = new ChromaClient({
+    host: chromaHost,
+    port: chromaPort,
+    ssl: false
+  });
+  
+  return client;
+}
 
 /**
  * Initialize ChromaDB connection
  */
 export async function initChromaDB() {
   try {
-    // Create client - uses default local instance at http://localhost:8000
-    // For production, use a hosted ChromaDB instance
-    client = new ChromaClient({
-      path: process.env.CHROMA_URL || 'http://localhost:8000',
-    });
+    // Lazy load ChromaDB client
+    const chromaClient = await getChromaClient();
 
-    // Get or create collection
+    // Get existing collection
+    // Note: Collection must be created by running the ingestion script first
     try {
-      collection = await client.getCollection({ name: COLLECTION_NAME });
+      collection = await chromaClient.getCollection({ 
+        name: COLLECTION_NAME,
+      });
       console.log('✅ Connected to existing ChromaDB collection:', COLLECTION_NAME);
     } catch (error) {
-      // Collection doesn't exist, create it
-      collection = await client.createCollection({
-        name: COLLECTION_NAME,
-        metadata: {
-          description: 'Educational content for CMA/CPA courses',
-        },
-      });
-      console.log('✅ Created new ChromaDB collection:', COLLECTION_NAME);
+      // Collection doesn't exist - user needs to run ingestion
+      console.warn('⚠️ Collection not found. Please run: npm run chroma:ingest');
+      throw new Error('ChromaDB collection not initialized. Run: npm run chroma:ingest');
     }
 
     return collection;
@@ -189,11 +207,12 @@ export async function clearCollection() {
       await initChromaDB();
     }
 
-    await client.deleteCollection({ name: COLLECTION_NAME });
+    const chromaClient = await getChromaClient();
+    await chromaClient.deleteCollection({ name: COLLECTION_NAME });
     console.log('✅ Cleared ChromaDB collection');
 
     // Recreate empty collection
-    collection = await client.createCollection({
+    collection = await chromaClient.createCollection({
       name: COLLECTION_NAME,
       metadata: {
         description: 'Educational content for CMA/CPA courses',
@@ -210,7 +229,8 @@ export async function clearCollection() {
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    await client.heartbeat();
+    const chromaClient = await getChromaClient();
+    await chromaClient.heartbeat();
     return true;
   } catch (error) {
     return false;

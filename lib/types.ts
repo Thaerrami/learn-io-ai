@@ -49,5 +49,7 @@ export interface RAGSearchResult {
   relevant_chunks: string[];
   source_page?: number;
   source?: 'chromadb' | 'mock' | 'not_found';
+  metadatas?: Record<string, any>[];
+  distances?: number[];
 }
 

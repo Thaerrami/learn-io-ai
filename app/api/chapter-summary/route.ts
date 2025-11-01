@@ -1,144 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { openai, validateOpenAIConfig } from '@/lib/openai';
-import { mockChapters } from '@/lib/mockData';
-import { batchRAGSearch } from '@/lib/ragService';
-import { ChapterSummary } from '@/lib/types';
-import { getCached, setCache } from '@/lib/simpleCache';
+import OpenAI from 'openai';
+import { getChapterContext, RAG_Search_Function } from '@/lib/ragService';
 
-// Generate comprehensive prompt for chapter abstraction
-function generateChapterAbstractionPrompt(chapterName: string): string {
-  return `You are an expert educational content creator specializing in CMA/CPA level accounting and finance courses. Your task is to create a comprehensive yet simplified chapter summary for university and professional certification students.
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-Chapter Name: "${chapterName}"
-
-YOUR TASK:
-Create a review/revision summary that helps students quickly understand and recall the key concepts from this chapter. The summary should be thorough enough to serve as a study guide but concise enough to be reviewed in 10-15 minutes.
-
-REQUIREMENTS FOR THE SUMMARY:
-1. Start with a brief overview of what the chapter covers (2-3 sentences)
-2. Break down the main concepts into clear sections
-3. Explain each concept briefly but clearly - aim for understanding, not just listing
-4. Include the most important formulas with brief explanations of when to use them
-5. Highlight key rules, principles, or frameworks
-6. Use bullet points and clear structure for easy scanning
-7. Write at a level that balances technical accuracy with accessibility
-8. Length: 400-600 words
-
-REQUIREMENTS FOR KEYWORDS:
-After generating the summary, identify 5-10 "Core Keywords" that represent the most important terms and concepts in the summary. These should be:
-- Technical terms that students need to understand deeply
-- Concepts that have formal definitions
-- Terms that appear in formulas or frameworks
-- Words that, if clicked, would benefit from seeing the original textbook definition
-
-Examples of good keywords: "Net Present Value", "Cost of Goods Sold", "Variable Cost", "Overhead Rate"
-Examples of poor keywords: "important", "calculate", "understand", "business"
-
-OUTPUT FORMAT (JSON):
-{
-  "summary_text": "Your comprehensive summary here...",
-  "core_keywords": ["Keyword 1", "Keyword 2", "Keyword 3", "Keyword 4", "Keyword 5", ...]
-}
-
-IMPORTANT: 
-- Write the summary as if you're a teaching assistant helping students review before an exam
-- Focus on understanding and application, not just memorization
-- Make it practical and useful for active study
-- Ensure keywords are actual terms that appear in the summary text
-
-Generate the chapter summary now:`;
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    // Validate OpenAI configuration
-    validateOpenAIConfig();
+    const { chapter_name, core_keywords } = await req.json();
 
-    // Parse request body
-    const body = await request.json();
-    const { chapter_name, include_rag_links = false } = body;
-
-    // Validate input
-    if (!chapter_name) {
+    if (!chapter_name || !core_keywords || !Array.isArray(core_keywords)) {
       return NextResponse.json(
-        { error: 'Missing required field: chapter_name' },
+        { error: 'chapter_name and core_keywords (array) are required' },
         { status: 400 }
       );
     }
 
-    // Check cache first
-    const cacheKey = `summary:${chapter_name.toLowerCase()}:${include_rag_links}`;
-    const cached = getCached(cacheKey);
-    if (cached) {
-      console.log('✅ Cache HIT:', cacheKey);
-      return NextResponse.json({
-        ...cached,
-        from_cache: true,
-      });
-    }
-    console.log('❌ Cache MISS:', cacheKey);
+    // Get context from ChromaDB using RAG
+    console.log('🔍 Fetching context from ChromaDB...');
+    const context = await getChapterContext(chapter_name, core_keywords);
 
-    // Check if chapter exists in our mock data
-    const chapter = mockChapters.find(
-      (ch) => ch.chapter_name.toLowerCase() === chapter_name.toLowerCase()
+    // Get keyword definitions
+    const keywordDefinitions = await Promise.all(
+      core_keywords.map(keyword => RAG_Search_Function(keyword))
     );
 
-    if (!chapter) {
-      // Even if not in mock data, we can still generate a summary
-      console.log(`Chapter "${chapter_name}" not in mock data, but proceeding with generation`);
-    }
+    // Build context for the prompt
+    const contextText = context
+      .map(c => `[From ${c.source}, Page ${c.page || 'N/A'}]: ${c.text}`)
+      .join('\n\n');
 
-    // Generate chapter abstraction prompt
-    const prompt = generateChapterAbstractionPrompt(chapter_name);
+    const keywordText = keywordDefinitions
+      .map(def => `${def.keyword}: ${def.relevant_chunks.join(' ')} (Source: Page ${def.source_page || 'N/A'})`)
+      .join('\n\n');
 
-    // Call OpenAI API
+    // Generate summary using GPT-4 Turbo
+    console.log('🤖 Generating summary with GPT-4...');
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4-turbo-preview',
       messages: [
         {
           role: 'system',
-          content:
-            'You are an expert education content creator specializing in CMA/CPA level accounting and finance. You create clear, comprehensive summaries that help students review and understand complex topics.',
+          content: `You are an expert educational content creator. Generate a comprehensive chapter summary that:
+1. Provides a clear overview of the chapter's main concepts
+2. Defines and explains the core keywords
+3. Uses information from the provided context
+4. Cites sources with page numbers when available
+5. Is suitable for students preparing for CMA/CPA exams`,
         },
         {
           role: 'user',
-          content: prompt,
+          content: `Create a summary for "${chapter_name}" focusing on these keywords: ${core_keywords.join(', ')}
+
+CONTEXT FROM TEXTBOOK:
+${contextText}
+
+KEYWORD DEFINITIONS:
+${keywordText}
+
+Generate a well-structured summary that incorporates this information and helps students understand the key concepts.`,
         },
       ],
       temperature: 0.7,
       max_tokens: 1500,
-      response_format: { type: 'json_object' },
     });
 
-    // Parse the response
-    const responseContent = completion.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('Empty response from OpenAI');
-    }
+    const summaryText = completion.choices[0].message.content || '';
 
-    const parsedResponse: ChapterSummary = JSON.parse(responseContent);
+    // Create source citations
+    const sources = context.map(c => ({
+      source: c.source,
+      page: c.page,
+      excerpt: c.text.substring(0, 150) + '...',
+    }));
 
-    // Build the response object
-    const response: any = {
+    return NextResponse.json({
       chapter_name,
-      summary_text: parsedResponse.summary_text,
-      core_keywords: parsedResponse.core_keywords,
+      summary_text: summaryText,
+      core_keywords,
+      sources,
       generated_at: new Date().toISOString(),
-      from_cache: false,
-    };
-
-    // If RAG links are requested, fetch definitions for keywords
-    if (include_rag_links) {
-      console.log('Fetching RAG definitions for keywords:', parsedResponse.core_keywords);
-      const ragResults = await batchRAGSearch(parsedResponse.core_keywords);
-      response.rag_definitions = ragResults;
-    }
-
-    // Cache for 24 hours (summaries change less frequently)
-    setCache(cacheKey, response, 24 * 3600);
-    console.log('💾 Cached:', cacheKey);
-
-    return NextResponse.json(response, { status: 200 });
+      model_used: 'gpt-4-turbo-preview',
+    });
   } catch (error: any) {
     console.error('Error generating chapter summary:', error);
     return NextResponse.json(
@@ -150,20 +94,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-// GET endpoint to retrieve available chapters
-export async function GET() {
-  try {
-    return NextResponse.json({
-      available_chapters: mockChapters.map((ch) => ({
-        chapter_id: ch.chapter_id,
-        chapter_name: ch.chapter_name,
-        topic_count: ch.topic_ids.length,
-      })),
-    });
-  } catch (error: any) {
-    console.error('Error fetching chapters:', error);
-    return NextResponse.json({ error: 'Failed to fetch chapters' }, { status: 500 });
-  }
-}
-

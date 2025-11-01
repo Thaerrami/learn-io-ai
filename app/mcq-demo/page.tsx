@@ -1,33 +1,61 @@
 'use client';
 
-import React, { useState } from 'react';
-import MCQDisplay from '@/components/MCQDisplay';
-import { RefreshedMCQ, PerformanceLevel } from '@/lib/types';
-import Link from 'next/link';
+import { useState } from 'react';
 
-export default function MCQDemoPage() {
-  const [topicId, setTopicId] = useState('financial-analysis');
-  const [performanceLevel, setPerformanceLevel] = useState<PerformanceLevel>('beginner');
-  const [currentMCQ, setCurrentMCQ] = useState<any | null>(null);
+interface Source {
+  source: string;
+  page?: number;
+  excerpt: string;
+}
+
+interface MCQResponse {
+  question_text: string;
+  options: {
+    A: string;
+    B: string;
+    C: string;
+    D: string;
+  };
+  correct_answer: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+  source_page?: number;
+  pattern_type: string;
+  difficulty_level: string;
+  topic_id: string;
+  sources: Source[];
+  generated_at: string;
+  model_used: string;
+}
+
+const DIFFICULTY_LEVELS = [
+  { value: 'beginner', label: '🌱 Beginner', description: 'Basic recall and understanding' },
+  { value: 'intermediate', label: '🌿 Intermediate', description: 'Application and analysis' },
+  { value: 'advanced', label: '🌳 Advanced', description: 'Complex scenarios and synthesis' },
+];
+
+const PATTERN_TYPES = [
+  { value: 'pure_recall', label: '📝 Pure Recall', description: 'Definition and facts' },
+  { value: 'numerical_calculation', label: '🔢 Numerical Calculation', description: 'Math and formulas' },
+  { value: 'scenario_analysis', label: '🎯 Scenario Analysis', description: 'Real-world application' },
+];
+
+export default function MCQGeneratorDemo() {
+  const [topicId, setTopicId] = useState('Cost Behavior');
+  const [originalQuestion, setOriginalQuestion] = useState('What are the different types of costs in management accounting?');
+  const [userLevel, setUserLevel] = useState('intermediate');
+  const [patternType, setPatternType] = useState('scenario_analysis');
+  const [mcq, setMcq] = useState<MCQResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [availableTopics, setAvailableTopics] = useState<any[]>([]);
+  const [error, setError] = useState('');
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [showExplanation, setShowExplanation] = useState(false);
 
-  // Fetch available topics on mount
-  React.useEffect(() => {
-    fetch('/api/generate-mcq')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.topics) {
-          setAvailableTopics(data.topics);
-        }
-      })
-      .catch((err) => console.error('Error fetching topics:', err));
-  }, []);
-
-  const generateMCQ = async () => {
+  const handleGenerateMCQ = async () => {
     setLoading(true);
-    setError(null);
+    setError('');
+    setMcq(null);
+    setSelectedAnswer(null);
+    setShowExplanation(false);
 
     try {
       const response = await fetch('/api/generate-mcq', {
@@ -37,7 +65,9 @@ export default function MCQDemoPage() {
         },
         body: JSON.stringify({
           topic_id: topicId,
-          performance_level: performanceLevel,
+          original_question: originalQuestion,
+          user_performance_level: userLevel,
+          pattern_type: patternType,
         }),
       });
 
@@ -47,173 +77,270 @@ export default function MCQDemoPage() {
       }
 
       const data = await response.json();
-      setCurrentMCQ(data);
+      setMcq(data);
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error generating MCQ:', err);
+      setError(err.message || 'An error occurred while generating the MCQ');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleAnswerSelect = (option: string) => {
+    setSelectedAnswer(option);
+    setShowExplanation(true);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <Link
-            href="/"
-            className="text-blue-600 hover:text-blue-800 mb-4 inline-block"
-          >
-            ← Back to Home
-          </Link>
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            MCQ Generator Demo
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            🎓 MCQ Generator with RAG
           </h1>
-          <p className="text-gray-600">
-            Generate personalized and refreshed multiple-choice questions based on user performance level
+          <p className="text-lg text-gray-600">
+            Generate adaptive questions based on user level using ChromaDB and Testbank examples
           </p>
         </div>
 
-        {/* Configuration Panel */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Question Parameters
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Topic Selection */}
+        {/* Input Form */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Select Topic
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Topic
               </label>
-              <select
+              <input
+                type="text"
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              >
-                <option value="financial-analysis">Financial Statement Analysis</option>
-                <option value="cost-accounting">Cost Accounting</option>
-                <option value="budgeting">Budgeting & Forecasting</option>
-              </select>
-              {availableTopics.length > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {availableTopics.find((t) => t.topic_id === topicId)?.question_count || 0}{' '}
-                  questions available
-                </p>
-              )}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="e.g., Cost Behavior, Break-even Analysis"
+              />
             </div>
 
-            {/* Performance Level */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Performance Level
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Base Question or Concept
               </label>
-              <select
-                value={performanceLevel}
-                onChange={(e) => setPerformanceLevel(e.target.value as PerformanceLevel)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              >
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Based on pre-test performance
-              </p>
+              <textarea
+                value={originalQuestion}
+                onChange={(e) => setOriginalQuestion(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="Enter a question or concept to generate variations from..."
+              />
             </div>
-          </div>
 
-          {/* Generate Button */}
-          <button
-            onClick={generateMCQ}
-            disabled={loading}
-            className={`w-full py-3 px-6 rounded-lg font-semibold text-white transition-colors ${
-              loading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {loading ? 'Generating Question...' : 'Generate Personalized MCQ'}
-          </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* User Level Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Student Level
+                </label>
+                <select
+                  value={userLevel}
+                  onChange={(e) => setUserLevel(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                >
+                  {DIFFICULTY_LEVELS.map((level) => (
+                    <option key={level.value} value={level.value}>
+                      {level.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {DIFFICULTY_LEVELS.find(l => l.value === userLevel)?.description}
+                </p>
+              </div>
+
+              {/* Pattern Type Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Question Pattern
+                </label>
+                <select
+                  value={patternType}
+                  onChange={(e) => setPatternType(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                >
+                  {PATTERN_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {PATTERN_TYPES.find(t => t.value === patternType)?.description}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleGenerateMCQ}
+              disabled={loading || !topicId || !originalQuestion}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating Question...
+                </span>
+              ) : (
+                '🎯 Generate MCQ'
+              )}
+            </button>
+          </div>
         </div>
-
-        {/* Feature Highlights */}
-        {!currentMCQ && !loading && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">
-              🎯 Key Features Demonstrated
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">
-                  📊 Pattern-Based Refreshing
-                </h4>
-                <p className="text-sm text-gray-700">
-                  Questions are refreshed differently based on their pattern type:
-                  numerical calculations, scenario analysis, or pure recall.
-                </p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg">
-                <h4 className="font-semibold text-green-900 mb-2">
-                  🎓 Difficulty Preservation
-                </h4>
-                <p className="text-sm text-gray-700">
-                  The core concept and difficulty level remain consistent while
-                  specific details are modified for practice variety.
-                </p>
-              </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-900 mb-2">
-                  📚 Didactic Explanations
-                </h4>
-                <p className="text-sm text-gray-700">
-                  Detailed explanations help students learn the concepts, not just
-                  memorize answers.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Error Display */}
         {error && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-8">
-            <h3 className="font-bold text-red-800 mb-2">Error</h3>
-            <p className="text-red-700">{error}</p>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">⚠️</span>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
           </div>
         )}
 
         {/* MCQ Display */}
-        {currentMCQ && !loading && (
-          <div className="mb-8">
-            <MCQDisplay mcq={currentMCQ} onNextQuestion={generateMCQ} />
+        {mcq && (
+          <div className="space-y-6">
+            {/* Question */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                    {mcq.difficulty_level}
+                  </span>
+                  <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                    {mcq.pattern_type}
+                  </span>
+                </div>
+                {mcq.source_page && (
+                  <span className="text-sm text-gray-600">
+                    📄 Page {mcq.source_page}
+                  </span>
+                )}
+              </div>
+
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">
+                {mcq.question_text}
+              </h3>
+
+              {/* Options */}
+              <div className="space-y-3">
+                {Object.entries(mcq.options).map(([key, value]) => (
+                  <button
+                    key={key}
+                    onClick={() => handleAnswerSelect(key)}
+                    disabled={selectedAnswer !== null}
+                    className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                      selectedAnswer === null
+                        ? 'border-gray-200 hover:border-purple-500 hover:bg-purple-50'
+                        : selectedAnswer === key
+                        ? key === mcq.correct_answer
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-red-500 bg-red-50'
+                        : key === mcq.correct_answer
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <span className="font-semibold mr-2">{key}.</span>
+                    <span>{value}</span>
+                    {selectedAnswer !== null && key === mcq.correct_answer && (
+                      <span className="ml-2 text-green-600">✓ Correct</span>
+                    )}
+                    {selectedAnswer === key && key !== mcq.correct_answer && (
+                      <span className="ml-2 text-red-600">✗ Incorrect</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Explanation */}
+            {showExplanation && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                  💡 Explanation
+                </h4>
+                <p className="text-gray-700 whitespace-pre-line">
+                  {mcq.explanation}
+                </p>
+              </div>
+            )}
+
+            {/* Sources */}
+            {mcq.sources && mcq.sources.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                  📚 Sources
+                </h4>
+                <div className="space-y-3">
+                  {mcq.sources.map((source, index) => (
+                    <div
+                      key={index}
+                      className="border-l-4 border-purple-500 bg-purple-50 p-3 rounded"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-purple-900">
+                          {source.source}
+                        </span>
+                        {source.page && (
+                          <span className="text-sm text-purple-700">
+                            Page {source.page}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 italic">
+                        {source.excerpt}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Meta Info */}
+            <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 text-center">
+              Generated with {mcq.model_used} on {new Date(mcq.generated_at).toLocaleString()}
+            </div>
           </div>
         )}
 
-        {/* Implementation Notes */}
-        <div className="bg-gray-800 text-white rounded-lg p-6">
-          <h3 className="text-xl font-bold mb-4">🔧 Implementation Notes</h3>
-          <ul className="space-y-2 text-sm">
-            <li>
-              <strong>API Endpoint:</strong> <code>/api/generate-mcq</code>
-            </li>
-            <li>
-              <strong>Model:</strong> GPT-3.5-Turbo (cost-effective for production scale)
-            </li>
-            <li>
-              <strong>Prompt Engineering:</strong> Pattern-specific instructions ensure concept preservation
-            </li>
-            <li>
-              <strong>Question Bank:</strong> Base questions are selected based on topic and difficulty
-            </li>
-            <li>
-              <strong>Scalability:</strong> Stateless API design enables horizontal scaling
-            </li>
-          </ul>
-        </div>
+        {/* Instructions */}
+        {!mcq && !loading && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 text-center">
+            <h3 className="text-lg font-semibold text-purple-900 mb-2">
+              🎯 How It Works
+            </h3>
+            <p className="text-purple-800 mb-4">
+              This generator uses RAG to create questions based on actual textbook content and testbank examples.
+            </p>
+            <div className="text-left bg-white p-4 rounded border border-purple-200 space-y-2">
+              <p className="text-sm text-gray-700">
+                ✨ <strong>Student Level:</strong> Adjusts question complexity and depth
+              </p>
+              <p className="text-sm text-gray-700">
+                ✨ <strong>Question Pattern:</strong> Determines the type of cognitive skill tested
+              </p>
+              <p className="text-sm text-gray-700">
+                ✨ <strong>Source Attribution:</strong> Each question includes references to the original material
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

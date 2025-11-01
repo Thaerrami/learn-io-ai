@@ -23,8 +23,15 @@ async function getChromaClient(): Promise<ChromaClient> {
   if (client) return client;
   
   const { ChromaClient } = await import('chromadb');
+  
+  // Use the modern ChromaDB client configuration
+  const chromaHost = process.env.CHROMA_HOST || 'localhost';
+  const chromaPort = parseInt(process.env.CHROMA_PORT || '8000');
+  
   client = new ChromaClient({
-    path: process.env.CHROMA_URL || 'http://localhost:8000',
+    host: chromaHost,
+    port: chromaPort,
+    ssl: false
   });
   
   return client;

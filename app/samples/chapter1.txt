@@ -1,0 +1,21 @@
+Chapter 1: Introduction to Financial Accounting
+
+Financial accounting is the process of recording, summarizing, and reporting financial transactions of a business. It provides information to external users such as investors, creditors, and regulatory agencies.
+
+Key Concepts:
+1. Assets: Resources owned by the business that have economic value
+2. Liabilities: Debts or obligations owed by the business
+3. Equity: The owner's claim on business assets
+
+The Accounting Equation:
+Assets = Liabilities + Owner's Equity
+
+This fundamental equation must always balance and forms the basis of double-entry bookkeeping.
+
+Financial Statements:
+- Balance Sheet: Shows financial position at a specific date
+- Income Statement: Reports revenues and expenses over a period
+- Cash Flow Statement: Shows cash inflows and outflows
+- Statement of Owner's Equity: Shows changes in equity
+
+Generally Accepted Accounting Principles (GAAP) provide the framework for financial reporting in the United States.

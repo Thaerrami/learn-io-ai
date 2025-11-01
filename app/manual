@@ -1,0 +1,160 @@
+🚀 Step-by-Step Guide to Run Your System
+Here's exactly how to run your fixed educational AI system:
+📋 Phase 1: Start the System (2 minutes)
+Step 1: Start ChromaDB
+
+Expected output:
+Step 2: Process Sample Content
+Expected output:
+Step 3: Start the Web Application
+Expected output:
+Step 4: Test Everything Works
+Open your browser and visit: http://localhost:3000
+You should see the homepage. Then test the main features:
+Chapter Summary: http://localhost:3000/chapter-summary
+Should show "✅ ChromaDB Connected (6 documents)"
+Try generating a summary with the sample data
+MCQ Demo: http://localhost:3000/mcq-demo
+Test the question generation features
+📁 Phase 2: Add Your Real Content (10 minutes)
+Step 5: Convert Your PDFs to Text
+Option A: Online Conversion (Easiest)
+Go to: https://www.ilovepdf.com/pdf_to_text
+Upload your Chapter 1.pdf
+Upload your Testbank Chapter (1).pdf
+Download the converted .txt files
+Rename them:
+Chapter 1.txt → chapter1.txt
+Testbank Chapter (1).txt → testbank.txt
+Option B: Command Line (Linux/Mac)
+Step 6: Place Files in Correct Location
+Step 7: Process Your Real Content
+Expected output:
+Step 8: Test With Your Content
+Go back to: http://localhost:3000/chapter-summary
+Now try generating summaries using keywords from your actual chapter content!
+🔧 Phase 3: Troubleshooting & Management
+Check System Status
+Should show:
+Common Issues & Fixes
+Issue: "Port already allocated"
+Issue: "No documents found"
+Issue: "ChromaDB not responding"
+Issue: Need help with PDF conversion
+Stop Everything When Done
+🎯 Complete Command Reference
+Starting Up:
+Managing Content:
+Docker Management:
+📊 Expected Timeline
+Task	Time	Status
+Start ChromaDB	30 seconds	✅ Ready
+Process sample content	10 seconds	✅ Ready
+Start web app	20 seconds	✅ Ready
+Convert PDFs	5 minutes	Your action
+Process real content	30 seconds	After PDFs
+Total time to working system	6 minutes	🚀
+🎉 Success Checklist
+[ ] ChromaDB container running (green status)
+[ ] Sample content processed (6+ documents)
+[ ] Web app accessible at localhost:3000
+[ ] Chapter summary page shows connected status
+[ ] Can generate summaries with sample data
+[ ] PDFs converted to text files
+[ ] Real content processed successfully
+[ ] Can generate summaries with your content
+🆘 Quick Help
+If anything goes wrong:
+Run: npm run docker:status (check ChromaDB)
+Run: npm run convert-help (check files)
+Look at: SYSTEM_STATUS_FIXED.md (full docs)
+Your system is ready to use! 🎉
+Just follow these steps in order, and you'll have a fully working educational AI system processing your content in under 10 minutes.
+
+
+
+npm run docker:start
+
+npm run ingest
+
+npm run dev
+
+Step 5: Convert Your PDFs to Text
+
+    # Install PDF tools (one time only)
+    sudo apt-get install poppler-utils  # Linux
+    # or: brew install poppler           # Mac
+
+    # Convert your PDFs
+    cd app/samples
+    pdftotext "Chapter 1.pdf" "chapter1.txt"
+    pdftotext "Testbank Chapter (1).pdf" "testbank.txt"
+    cd ../..
+
+
+# Your files should be here:
+ls app/samples/
+# Should show: chapter1.txt, testbank.txt (plus the PDFs)
+
+
+Step 7: Process Your Real Content
+npm run ingest
+
+🔧 Phase 3: Troubleshooting & Management
+npm run docker:status
+
+
+//////////////
+Common Issues & Fixes
+Issue: "Port already allocated"
+
+npm run docker:clean
+npm run docker:start
+
+
+Issue: "No documents found"
+
+# Check files exist:
+ls app/samples/*.txt
+
+# Re-run ingestion:
+npm run ingest
+
+
+Issue: "ChromaDB not responding"
+npm run docker:restart
+
+
+
+Issue: Need help with PDF conversion
+npm run convert-help
+
+
+Stop Everything When Done
+
+# Stop web app: Ctrl+C in the terminal
+# Stop ChromaDB:
+npm run docker:stop
+
+
+🎯 Complete Command Reference
+
+npm run docker:start    # Start ChromaDB
+npm run ingest          # Process content  
+npm run dev             # Start web app
+
+
+
+Managing Content:
+npm run convert-help    # PDF conversion guide
+npm run ingest          # Process new content
+
+
+Docker Management:
+npm run docker:status   # Check if running
+npm run docker:stop     # Stop ChromaDB
+npm run docker:clean    # Fix conflicts
+npm run docker:restart  # Restart everything
+
+
+

@@ -98,8 +98,15 @@ async function ingestChapter1() {
     
     // Initialize ChromaDB
     console.log('🔌 Connecting to ChromaDB...');
+    
+    // Use the modern ChromaDB client configuration  
+    const chromaHost = process.env.CHROMA_HOST || 'localhost';
+    const chromaPort = parseInt(process.env.CHROMA_PORT || '8000');
+    
     const client = new ChromaClient({
-      path: process.env.CHROMA_URL || 'http://localhost:8000',
+      host: chromaHost,
+      port: chromaPort,
+      ssl: false
     });
 
     const COLLECTION_NAME = 'educational_content';
@@ -118,8 +125,7 @@ async function ingestChapter1() {
     collection = await client.createCollection({
       name: COLLECTION_NAME,
       metadata: { 
-        description: 'Educational content for CMA/CPA courses',
-        'hnsw:space': 'cosine'
+        description: 'Educational content for CMA/CPA courses'
       },
     });
     console.log('✅ Created new ChromaDB collection:', COLLECTION_NAME);
@@ -142,7 +148,7 @@ async function ingestChapter1() {
       type: 'chapter_content',
     }));
     const chapter1Ids = chapter1Chunks.map((_, idx) => `chapter1_chunk_${idx}`);
-
+    
     await collection.add({
       documents: chapter1Docs,
       metadatas: chapter1Metadata,

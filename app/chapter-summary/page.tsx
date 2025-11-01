@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Source {
   source: string;
@@ -26,12 +26,25 @@ export default function ChapterSummaryDemo() {
   const [chromaStatus, setChromaStatus] = useState<any>(null);
 
   // Check ChromaDB status on mount
-  useState(() => {
-    fetch('/api/ingest-pdf')
-      .then(res => res.json())
-      .then(data => setChromaStatus(data))
-      .catch(err => console.error('Failed to check ChromaDB status:', err));
-  });
+  useEffect(() => {
+    const checkChromaStatus = async () => {
+      try {
+        const response = await fetch('/api/ingest-pdf');
+        if (response.ok) {
+          const data = await response.json();
+          setChromaStatus(data);
+        } else {
+          console.warn('ChromaDB status check failed:', response.status);
+          setChromaStatus({ status: 'disconnected', document_count: 0 });
+        }
+      } catch (err) {
+        console.error('Failed to check ChromaDB status:', err);
+        setChromaStatus({ status: 'disconnected', document_count: 0 });
+      }
+    };
+
+    checkChromaStatus();
+  }, []);
 
   const handleGenerateSummary = async () => {
     setLoading(true);

@@ -3,15 +3,15 @@
  * Run: npx tsx scripts/ingestPDFs.ts
  */
 
-import * as path from 'path';
+const path = require('path');
 
 async function ingestChapter1() {
   console.log('📚 Starting PDF ingestion...\n');
 
   try {
-    // Dynamic imports
-    const { processPDF, extractTextFromPDF, extractQuestionsFromText } = await import('../lib/pdfService');
-    const { initChromaDB, addDocuments, getCollectionStats } = await import('../lib/chromaService');
+    // Import services
+    const { processPDF, extractTextFromPDF, extractQuestionsFromText } = require('../lib/pdfService');
+    const { initChromaDB, addDocuments, getCollectionStats } = require('../lib/chromaService');
 
     // Initialize ChromaDB
     console.log('🔌 Connecting to ChromaDB...');

@@ -1,0 +1,23 @@
+1. What is the fundamental accounting equation?
+A) Assets + Liabilities = Equity
+B) Assets = Liabilities + Equity
+C) Assets = Liabilities - Equity
+D) Assets - Liabilities = Revenue
+Answer: B
+Explanation: The accounting equation shows that assets equal the sum of liabilities and owner's equity.
+
+2. Which financial statement shows the company's financial position at a specific date?
+A) Income Statement
+B) Cash Flow Statement
+C) Balance Sheet
+D) Statement of Equity
+Answer: C
+Explanation: The balance sheet provides a snapshot of financial position at a specific point in time.
+
+3. What are assets?
+A) Debts owed by the business
+B) Owner's claims on the business
+C) Resources owned by the business
+D) Business expenses
+Answer: C
+Explanation: Assets are economic resources owned or controlled by the business that provide future benefits.

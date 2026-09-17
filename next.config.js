@@ -13,26 +13,8 @@ const nextConfig = {
       };
     }
 
-    // Exclude ChromaDB and native modules from client-side bundle
-    config.externals = [
-      ...(config.externals || []),
-      'chromadb',
-      '@chroma-core/default-embed',
-      'onnxruntime-node',
-      '@huggingface/transformers',
-    ];
-
-    // Ignore native binary files
-    config.module = {
-      ...config.module,
-      rules: [
-        ...config.module.rules,
-        {
-          test: /\.node$/,
-          use: 'ignore-loader',
-        },
-      ],
-    };
+    // Exclude ChromaDB from client-side bundle
+    config.externals = [...(config.externals || []), 'chromadb'];
 
     return config;
   },

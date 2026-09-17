@@ -13,9 +13,9 @@ async function ingestChapter1() {
     const { processPDF, extractTextFromPDF, extractQuestionsFromText } = require('../lib/pdfService');
     const { initChromaDB, addDocuments, getCollectionStats } = require('../lib/chromaService');
 
-    // Initialize ChromaDB
+    // Initialize ChromaDB (create collection if it doesn't exist)
     console.log('🔌 Connecting to ChromaDB...');
-    await initChromaDB();
+    await initChromaDB(true);
 
     // Process Chapter 1 PDF
     const chapter1Path = path.join(process.cwd(), 'app', 'samples', 'Chapter 1.pdf');

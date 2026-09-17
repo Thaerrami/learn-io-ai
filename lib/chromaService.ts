@@ -39,35 +39,64 @@ async function getChromaClient(): Promise<ChromaClient> {
 
 /**
  * Initialize ChromaDB connection
+ * @param createIfNotExists - If true, creates the collection if it doesn't exist (for ingestion scripts)
  */
-export async function initChromaDB() {
+export async function initChromaDB(createIfNotExists: boolean = false) {
   try {
     // Lazy load ChromaDB client
     const chromaClient = await getChromaClient();
 
-    // Get existing collection
-    // Note: Collection must be created by running the ingestion script first
+    // Get existing collection with embedding function
     try {
+      // Dynamic import to avoid webpack bundling issues
+      const defaultEmbedModule = await import('@chroma-core/default-embed');
+      const DefaultEmbeddingFunction = (defaultEmbedModule as any).DefaultEmbeddingFunction || (defaultEmbedModule as any).default;
+      const embedder = new DefaultEmbeddingFunction();
+      
       collection = await chromaClient.getCollection({ 
         name: COLLECTION_NAME,
+        embeddingFunction: embedder,
       });
       console.log('✅ Connected to existing ChromaDB collection:', COLLECTION_NAME);
+      return collection;
     } catch (error) {
-      // Collection doesn't exist - user needs to run ingestion
-      console.warn('⚠️ Collection not found. Please run: npm run chroma:ingest');
-      throw new Error('ChromaDB collection not initialized. Run: npm run chroma:ingest');
+      // Collection doesn't exist
+      if (createIfNotExists) {
+        // Create the collection for ingestion with default embedding function
+        console.log('📝 Creating new ChromaDB collection:', COLLECTION_NAME);
+        // Dynamic import to avoid webpack bundling issues
+        const defaultEmbedModule = await import('@chroma-core/default-embed');
+        const DefaultEmbeddingFunction = (defaultEmbedModule as any).DefaultEmbeddingFunction || (defaultEmbedModule as any).default;
+        const embedder = new DefaultEmbeddingFunction();
+        
+        collection = await chromaClient.createCollection({
+          name: COLLECTION_NAME,
+          embeddingFunction: embedder,
+          metadata: {
+            description: 'Educational content for CMA/CPA courses',
+          },
+        });
+        console.log('✅ Created ChromaDB collection:', COLLECTION_NAME);
+        return collection;
+      } else {
+        // Gracefully handle without throwing (for runtime use)
+        console.warn('⚠️ Collection not found. Running without ChromaDB. To enable RAG features, run: npm run chroma:ingest');
+        collection = null;
+        return null;
+      }
     }
-
-    return collection;
   } catch (error) {
-    console.error('❌ Failed to initialize ChromaDB:', error);
-    console.log('💡 Make sure ChromaDB is running: docker run -p 8000:8000 chromadb/chroma');
-    throw error;
+    // ChromaDB not available - gracefully handle without throwing
+    console.warn('⚠️ ChromaDB not available. Running without RAG features.');
+    console.log('💡 To enable ChromaDB: docker run -p 8000:8000 chromadb/chroma');
+    collection = null;
+    return null;
   }
 }
 
 /**
  * Add documents to ChromaDB
+ * Batches large additions to avoid server errors
  */
 export async function addDocuments(
   documents: string[],
@@ -76,19 +105,59 @@ export async function addDocuments(
 ) {
   try {
     if (!collection) {
-      await initChromaDB();
+      await initChromaDB(true);
     }
 
-    await collection.add({
-      documents,
-      metadatas,
-      ids,
-    });
+    // If collection is still null after init, return gracefully
+    if (!collection) {
+      console.warn('⚠️ Cannot add documents: ChromaDB not available');
+      return;
+    }
 
-    console.log(`✅ Added ${documents.length} documents to ChromaDB`);
+    // Batch additions to avoid server errors (max 10 at a time with delay)
+    const batchSize = 10;
+    let added = 0;
+
+    for (let i = 0; i < documents.length; i += batchSize) {
+      const batchDocs = documents.slice(i, i + batchSize);
+      const batchMetas = metadatas.slice(i, i + batchSize);
+      const batchIds = ids.slice(i, i + batchSize);
+
+      try {
+        await collection.add({
+          documents: batchDocs,
+          metadatas: batchMetas,
+          ids: batchIds,
+        });
+        added += batchDocs.length;
+        // Small delay between batches to avoid overwhelming the server
+        if (i + batchSize < documents.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to add batch ${Math.floor(i / batchSize) + 1}:`, error instanceof Error ? error.message : 'Unknown error');
+        // Try individual documents in this batch
+        for (let j = 0; j < batchDocs.length; j++) {
+          try {
+            await collection.add({
+              documents: [batchDocs[j]],
+              metadatas: [batchMetas[j]],
+              ids: [batchIds[j]],
+            });
+            added++;
+          } catch (individualError) {
+            console.warn(`⚠️ Failed to add document ${i + j}:`, individualError instanceof Error ? individualError.message : 'Unknown error');
+          }
+        }
+      }
+    }
+
+    if (added > 0) {
+      console.log(`✅ Added ${added} documents to ChromaDB`);
+    }
   } catch (error) {
-    console.error('❌ Failed to add documents:', error);
-    throw error;
+    console.warn('⚠️ Failed to add documents:', error instanceof Error ? error.message : 'Unknown error');
+    // Don't throw - allow app to continue without ChromaDB
   }
 }
 
@@ -108,19 +177,44 @@ export async function semanticSearch(
       await initChromaDB();
     }
 
+    // If collection is still null after init, return empty results
+    if (!collection) {
+      return {
+        documents: [[]],
+        metadatas: [[]],
+        distances: [[]],
+      };
+    }
+
     const results = await collection.query({
       queryTexts: [query],
       nResults,
     });
 
+    // Filter out null values and ensure proper types
+    const documents = (results.documents || [[]]).map(docArray => 
+      (docArray || []).filter((doc): doc is string => doc !== null && doc !== undefined)
+    );
+    const metadatas = (results.metadatas || [[]]).map(metaArray => 
+      (metaArray || []).filter((meta): meta is Record<string, any> => meta !== null && meta !== undefined)
+    );
+    const distances = (results.distances || [[]]).map(distArray => 
+      (distArray || []).filter((dist): dist is number => dist !== null && dist !== undefined)
+    );
+
     return {
-      documents: results.documents,
-      metadatas: results.metadatas,
-      distances: results.distances || [],
+      documents: documents.length > 0 ? documents : [[]],
+      metadatas: metadatas.length > 0 ? metadatas : [[]],
+      distances: distances.length > 0 ? distances : [[]],
     };
   } catch (error) {
-    console.error('❌ Semantic search failed:', error);
-    throw error;
+    // Gracefully return empty results instead of throwing
+    console.warn('⚠️ Semantic search failed, returning empty results:', error instanceof Error ? error.message : 'Unknown error');
+    return {
+      documents: [[]],
+      metadatas: [[]],
+      distances: [[]],
+    };
   }
 }
 
@@ -179,6 +273,15 @@ export async function getCollectionStats() {
   try {
     if (!collection) {
       await initChromaDB();
+    }
+
+    if (!collection) {
+      return {
+        collection_name: COLLECTION_NAME,
+        document_count: 0,
+        status: 'disconnected',
+        error: 'ChromaDB not available',
+      };
     }
 
     const count = await collection.count();

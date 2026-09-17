@@ -44,7 +44,10 @@ export default function MCQGeneratorDemo() {
   const [originalQuestion, setOriginalQuestion] = useState('What are the different types of costs in management accounting?');
   const [userLevel, setUserLevel] = useState('intermediate');
   const [patternType, setPatternType] = useState('scenario_analysis');
+  const [examMode, setExamMode] = useState(false);
   const [mcq, setMcq] = useState<MCQResponse | null>(null);
+  const [examQuestions, setExamQuestions] = useState<MCQResponse[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -54,34 +57,87 @@ export default function MCQGeneratorDemo() {
     setLoading(true);
     setError('');
     setMcq(null);
+    setExamQuestions([]);
+    setCurrentQuestionIndex(0);
     setSelectedAnswer(null);
     setShowExplanation(false);
 
     try {
-      const response = await fetch('/api/generate-mcq', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topic_id: topicId,
-          original_question: originalQuestion,
-          user_performance_level: userLevel,
-          pattern_type: patternType,
-        }),
-      });
+      if (examMode) {
+        // Generate exam with 20 questions
+        const response = await fetch('/api/generate-exam', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            topic_id: topicId,
+            original_question: originalQuestion,
+            user_performance_level: userLevel,
+            pattern_type: patternType,
+            question_count: 20,
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate MCQ');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to generate exam');
+        }
+
+        const data = await response.json();
+        setExamQuestions(data.questions || []);
+        if (data.questions && data.questions.length > 0) {
+          setMcq(data.questions[0]);
+        }
+      } else {
+        // Generate single question
+        const response = await fetch('/api/generate-mcq', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            topic_id: topicId,
+            original_question: originalQuestion,
+            user_performance_level: userLevel,
+            pattern_type: patternType,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to generate MCQ');
+        }
+
+        const data = await response.json();
+        setMcq(data);
       }
-
-      const data = await response.json();
-      setMcq(data);
     } catch (err: any) {
       setError(err.message || 'An error occurred while generating the MCQ');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (examMode && examQuestions.length > 0) {
+      const nextIndex = currentQuestionIndex + 1;
+      if (nextIndex < examQuestions.length) {
+        setCurrentQuestionIndex(nextIndex);
+        setMcq(examQuestions[nextIndex]);
+        setSelectedAnswer(null);
+        setShowExplanation(false);
+      }
+    }
+  };
+
+  const handlePreviousQuestion = () => {
+    if (examMode && currentQuestionIndex > 0) {
+      const prevIndex = currentQuestionIndex - 1;
+      setCurrentQuestionIndex(prevIndex);
+      setMcq(examQuestions[prevIndex]);
+      setSelectedAnswer(null);
+      setShowExplanation(false);
     }
   };
 
@@ -130,6 +186,20 @@ export default function MCQGeneratorDemo() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Enter a question or concept to generate variations from..."
               />
+            </div>
+
+            {/* Exam Mode Toggle */}
+            <div className="flex items-center gap-3 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="examMode"
+                checked={examMode}
+                onChange={(e) => setExamMode(e.target.checked)}
+                className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+              />
+              <label htmlFor="examMode" className="text-sm font-medium text-gray-700 cursor-pointer">
+                📝 Exam Mode (Generate 20 Questions)
+              </label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,10 +257,10 @@ export default function MCQGeneratorDemo() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Generating Question...
+                  {examMode ? 'Generating 20 Questions...' : 'Generating Question...'}
                 </span>
               ) : (
-                '🎯 Generate MCQ'
+                examMode ? '📝 Generate Exam (20 Questions)' : '🎯 Generate MCQ'
               )}
             </button>
           </div>
@@ -214,6 +284,36 @@ export default function MCQGeneratorDemo() {
         {/* MCQ Display */}
         {mcq && (
           <div className="space-y-6">
+            {/* Exam Mode Header */}
+            {examMode && examQuestions.length > 0 && (
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg text-yellow-900">📝 Exam Mode</h3>
+                    <p className="text-sm text-yellow-700">
+                      Question {currentQuestionIndex + 1} of {examQuestions.length}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handlePreviousQuestion}
+                      disabled={currentQuestionIndex === 0}
+                      className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      ← Previous
+                    </button>
+                    <button
+                      onClick={handleNextQuestion}
+                      disabled={currentQuestionIndex >= examQuestions.length - 1}
+                      className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Question */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
